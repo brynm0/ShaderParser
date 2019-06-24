@@ -18,6 +18,7 @@
 enum TokenType
 {
     TOKEN_UNKNOWN,
+    TOKEN_COMMA,
     TOKEN_EQUALS,
     TOKEN_IDENTIFIER,
     TOKEN_PAREN_OPEN,
@@ -130,7 +131,12 @@ Token getToken(Tokenizer* tokenizer)
     t.text = tokenizer->at;
     switch(tokenizer->at[0])
     {
-        
+
+        case ',' :
+        {
+            t.type = TOKEN_COMMA;
+            tokenizer->at++;
+        } break;
         case '=' :
         {
             t.type = TOKEN_EQUALS;
@@ -332,6 +338,29 @@ flocal void parseSingleShader(char* path, std::vector<ShaderBindingInfo>* infos)
                         info.type = (VkDescriptorType)-1;
                         info.isPushConstant = true;
                         infos->push_back(info);
+                      
+                    }
+                    else if (tokenEquals(token(TOKEN_IDENTIFIER, 6, "std430"), bindingType))
+                    {
+                        ASSERT(tokenEquals(token(TOKEN_COMMA, 1, ","), getToken(&tokenizer)),
+                               "Unexpected token!");
+                        ASSERT(tokenEquals(token(TOKEN_IDENTIFIER, 7, "binding"), getToken(&tokenizer)),
+                               "Unexpected token!");
+                        ASSERT(tokenEquals(token(TOKEN_EQUALS, 1, "="), getToken(&tokenizer)),
+                               "Unexpected token!");
+                        Token bindingIndex = getToken(&tokenizer);
+                        info.binding = lenStringToInt(bindingIndex.text, bindingIndex.length);
+                        
+                        ASSERT(tokenEquals(token(TOKEN_PAREN_CLOSE, 1, ")"), getToken(&tokenizer)),
+                               "Unexpected token!, %s, %d");
+                        
+                        Token isBuffer = getToken(&tokenizer);
+                        if (tokenEquals(token(TOKEN_IDENTIFIER, 6, "buffer"), isBuffer))
+                        {
+                            info.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                        }
+                        infos->push_back(info);
+                        
                     }
                     else if (tokenEquals(token(TOKEN_IDENTIFIER, 7, "binding"), bindingType))
                     {
@@ -392,7 +421,10 @@ printShaderBindingInfo(const ShaderBindingInfo& bindingInfo, u32* ctr)
         {
             cursor += sprintf(cursor, "bindingInfo.type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER\n");
         }
-
+        else if (bindingInfo.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+        {
+            cursor += sprintf(cursor, "bindingInfo.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER\n");
+        }
         if (bindingInfo.stageFlags == VK_SHADER_STAGE_VERTEX_BIT)
         {
             cursor += sprintf(cursor, "bindingInfo.stageFlags == VK_SHADER_STAGE_VERTEX_BIT\n");
@@ -401,7 +433,6 @@ printShaderBindingInfo(const ShaderBindingInfo& bindingInfo, u32* ctr)
         {
             cursor += sprintf(cursor, "bindingInfo.stageFlags == VK_SHADER_STAGE_FRAGMENT_BIT\n");
         }
-
         cursor += sprintf(cursor, "bindingInfo.binding == %d\n", bindingInfo.binding);
         
     }
@@ -460,9 +491,6 @@ getCompiledShaderName(char* out, char* name, VkShaderStageFlagBits stage)
 int
 main(u32 argc, char** argv)
 {
-#if 0
-    MaterialInfo* b = (MaterialInfo*)readEntireFileBinary(argv[3]);    
-# else
     ASSERT(argc == 5, "TOO FEW ARGUMENTS SUPPLIED TO COMMAND LINE");
     std::vector<ShaderBindingInfo> infos = {};
     
@@ -478,24 +506,9 @@ main(u32 argc, char** argv)
 
     matInfo.vertShaderPathLength = getCompiledShaderName((char*)&matInfo.vertShaderPath, argv[4], VK_SHADER_STAGE_VERTEX_BIT);
 
-#if 0 
-    u32 outShaderNameLen = strLen(argv[4]);
-    matInfo.vertShaderPathLength = strLen(outShaderNameLen + 4);
-    for (int i = 0; i < matInfo.vertShaderPathLength; i++)
-    {
-        matInfo.vertShaderPath[i] = outShaderName[i];
-    }
-    strCat(matInfo.vertShaderPath, ".spv");
-#endif
     
     matInfo.fragShaderPathLength = getCompiledShaderName((char*)&matInfo.fragShaderPath, argv[4], VK_SHADER_STAGE_FRAGMENT_BIT);
-#if 0 
-    strLen(argv[2]);    
-    for (int i = 0; i < matInfo.fragShaderPathLength; i++)
-    {
-        matInfo.fragShaderPath[i] = argv[2][i];
-    }
-#endif
+
     char matPath[256];
     char* ctr = matPath;
     char* inputCtr = argv[3];
@@ -519,7 +532,7 @@ main(u32 argc, char** argv)
     
     FILE* log = fopen(logPath, "w");
     char* matLog = printMaterialInfo(matInfo, &len);
-    
+# if 1
     char vertCommandPath[256];
     sprintf(vertCommandPath,
             "cmd /C W:/VulkanSDK/1.1.85.0/Bin/glslangValidator -V %s -o %s", argv[1], matInfo.vertShaderPath);
@@ -529,9 +542,11 @@ main(u32 argc, char** argv)
     
     system(vertCommandPath);
     system(fragCommandPath);
-    
+# endif     
     fwrite(matLog, len, 1, f);
     fclose(log);
-#endif 
+    printf("Press ENTER key to Continue\n");  
+    getchar(); 
+
     return 0;
 }
