@@ -4,21 +4,17 @@
    $Revision: $
    $Creator: Bryn Murrell $
    ======================================================================== */
-#include <stdio.h>
-#include <vector>
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-#include <time.h>
-#include <stdlib.h>
+
 #include "CommonDefines.h"
-#include "VkShaderBindingInfo.h"
 #include "DebugFileIO.cpp"
-#include <iostream>
+#include "vulkan/vulkan.h"
+#include "VkShaderBindingInfo.h"
 
 enum TokenType
 {
     TOKEN_UNKNOWN,
     TOKEN_COMMA,
+    //TODO distinguish between assignment and equivalence
     TOKEN_EQUALS,
     TOKEN_IDENTIFIER,
     TOKEN_PAREN_OPEN,
@@ -33,6 +29,10 @@ enum TokenType
     TOKEN_STRING,
     TOKEN_ASTERISK,
     TOKEN_POUND,
+    TOKEN_LSHIFT,
+    TOKEN_RSHIFT,
+    TOKEN_LESSER_THAN,
+    TOKEN_GREATER_THAN,
     TOKEN_END
 };
 
@@ -122,7 +122,6 @@ lenStringToInt(char* c, u32 len)
     return out;
 }
 
-
 Token getToken(Tokenizer* tokenizer)
 {
     eatAllWhitespace(tokenizer);
@@ -210,6 +209,44 @@ Token getToken(Tokenizer* tokenizer)
             t.type = TOKEN_STRING;
             t.length = tokenizer->at - t.text;
         } break;
+        case '<' : 
+        {
+            if (tokenizer->at[1] == '<')
+            {
+                t.type = TOKEN_LSHIFT;
+                t.text = "<<";
+                t.length = 2;
+                tokenizer->at++;
+                tokenizer->at++;
+            }
+            else
+            {
+                t.type = TOKEN_LESSER_THAN;
+                t.text = "<";
+                t.length = 1;
+                tokenizer->at++;
+            }
+        } break;
+        case '>' :
+        {
+
+            if (tokenizer->at[1] == '>')
+            {
+                t.type = TOKEN_RSHIFT;
+                t.text = ">>";
+                t.length = 2;
+                tokenizer->at++;
+                tokenizer->at++;
+            }
+            else
+            {
+                t.type = TOKEN_GREATER_THAN;
+                t.text = ">";
+                t.length = 1;
+                tokenizer->at++;
+            }
+        } break;
+            
         case 0 :
         {
             t.type = TOKEN_END;
@@ -231,13 +268,16 @@ Token getToken(Tokenizer* tokenizer)
             }
             else if (isNumeric(tokenizer->at[0]))
             {
-                while(!isWhitespace(tokenizer->at[0]) && tokenizer->at[0] != ')')
+#if 1        
+                while(isNumeric(tokenizer->at[0])) //!isWhitespace(tokenizer->at[0]) && tokenizer->at[0] != ')' && tokenizer->at[0] != ',')
                 {
                     tokenizer->at++;
                 }
                 t.type = TOKEN_NUMBER;
                 t.length = tokenizer->at - t.text;
-                
+#else
+                parse_number_token(tokenizer);
+#endif
             }
             else
             {
@@ -252,6 +292,11 @@ Token getToken(Tokenizer* tokenizer)
     return t;
 }
 
+Token peek_tok(Tokenizer tokenizer)
+{
+    return getToken(&tokenizer);
+}
+    
 flocal b32 strEq(char* a, char* b)
 {
     char* c = a;
@@ -372,7 +417,7 @@ flocal void parseSingleShader(char* path, std::vector<ShaderBindingInfo>* infos)
                                "Unexpected token!, %s, %d");
                         getToken(&tokenizer);
                         Token isSampler = getToken(&tokenizer);
-                        if (tokenEquals(token(TOKEN_IDENTIFIER, 9, "sampler2D"), isSampler))
+                        if (tokenEquals(token(TOKEN_IDENTIFIER, 9, "sampler2D"), isSampler) || tokenEquals(token(TOKEN_IDENTIFIER, 9, "sampler3D"), isSampler))
                         {
                             info.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
                         }
@@ -532,21 +577,23 @@ main(u32 argc, char** argv)
     
     FILE* log = fopen(logPath, "w");
     char* matLog = printMaterialInfo(matInfo, &len);
-# if 1
+    
     char vertCommandPath[256];
     sprintf(vertCommandPath,
-            "cmd /C W:/VulkanSDK/1.1.85.0/Bin/glslangValidator -V %s -o %s", argv[1], matInfo.vertShaderPath);
+            "cmd /C W:/VulkanSDK/1.1.130.0/Bin/glslangValidator -V %s -o %s", argv[1], matInfo.vertShaderPath);
     char fragCommandPath[256];
     sprintf(fragCommandPath,
-            "cmd /C W:/VulkanSDK/1.1.85.0/Bin/glslangValidator -V %s -o %s", argv[2], matInfo.fragShaderPath);
+            "cmd /C W:/VulkanSDK/1.1.130.0/Bin/glslangValidator -V %s -o %s", argv[2], matInfo.fragShaderPath);
     
-    system(vertCommandPath);
-    system(fragCommandPath);
-# endif     
+    u32 vert_ret_val = system(vertCommandPath);
+    u32 frag_ret_val = system(fragCommandPath);
+    
     fwrite(matLog, len, 1, f);
     fclose(log);
-    printf("Press ENTER key to Continue\n");  
-    getchar(); 
-
+    if (vert_ret_val || frag_ret_val)
+    {
+        printf("\nCompilation failed: Press ENTER key to terminate\n");  
+        getchar(); 
+    }
     return 0;
 }

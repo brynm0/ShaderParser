@@ -1,0 +1,9 @@
+
+*.ipch
+.vs/ShaderParser/v15/.suo
+.vs/ShaderParser/v15/Browse.VC.db
+*.pdb
+*.map
+*.obj
+*.sln
+*.exe
