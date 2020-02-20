@@ -4,325 +4,15 @@
    $Revision: $
    $Creator: Bryn Murrell $
    ======================================================================== */
-
-#include "CommonDefines.h"
+#include "blib_utils.h"
+#include <malloc.h>
+#include <unordered_map>
+#include "len_string.h"
+#include "parsing.h"
 #include "DebugFileIO.cpp"
 #include "vulkan/vulkan.h"
-#include "VkShaderBindingInfo.h"
-
-enum TokenType
-{
-    TOKEN_UNKNOWN,
-    TOKEN_COMMA,
-    //TODO distinguish between assignment and equivalence
-    TOKEN_EQUALS,
-    TOKEN_IDENTIFIER,
-    TOKEN_PAREN_OPEN,
-    TOKEN_PAREN_CLOSE,
-    TOKEN_BRACKET_OPEN,
-    TOKEN_BRACKET_CLOSE,
-    TOKEN_BRACE_OPEN,
-    TOKEN_BRACE_CLOSE,
-    TOKEN_NUMBER,
-    TOKEN_COLON,
-    TOKEN_SEMICOLON,
-    TOKEN_STRING,
-    TOKEN_ASTERISK,
-    TOKEN_POUND,
-    TOKEN_LSHIFT,
-    TOKEN_RSHIFT,
-    TOKEN_LESSER_THAN,
-    TOKEN_GREATER_THAN,
-    TOKEN_END
-};
-
-struct Token
-{
-    TokenType type;
-    u32 length;
-    char* text;
-};
-
-struct Tokenizer
-{
-    char* at;
-};
-
-flocal inline b32
-isEOL(char c)
-{
-    return (c == '\n') || (c == '\r');
-}
-
-
-flocal inline b32
-isWhitespace(char c)
-{
-    return ((c == ' ')  || (c == '\t') || isEOL(c));
-}
-
-flocal void
-eatAllWhitespace(Tokenizer* tok)
-{
-    while(true)
-    {
-        if (isWhitespace(tok->at[0]))
-        {
-            tok->at++;
-        }
-        else if (tok->at[0] == '/' && tok->at[1] == '/')
-        {
-            while(tok->at[0] && !isEOL(tok->at[0]))
-            {
-                tok->at++;
-            }
-        }
-        else if (tok->at[0] == '/' && tok->at[1] == '*')
-        {
-            while (tok->at[0] && (tok->at[0] != '*' && tok->at[1] != '/'))
-            {
-                tok->at++;
-            }
-            if(tok->at[0] != '*')
-            {
-                tok->at += 2;
-            }
-        }
-        else
-        {
-            break;
-        }
-    }
-     
-}
-
-flocal inline b32
-isAlpha(char c)
-{
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-}
-
-flocal inline b32
-isNumeric(char c)
-{
-    return c >= '0' && c <= '9';   
-}
-
-flocal u32
-lenStringToInt(char* c, u32 len)
-{
-    char* buf = (char*)malloc(len + 1);
-    for (int i = 0; i < len; i++)
-    {
-        buf[i] = c[i];
-    }
-    buf[len] = 0;
-    u32 out = strtol(buf, nullptr, 0);
-    free(buf);
-    return out;
-}
-
-Token getToken(Tokenizer* tokenizer)
-{
-    eatAllWhitespace(tokenizer);
-    Token t = {};
-    t.length = 1;
-    t.text = tokenizer->at;
-    switch(tokenizer->at[0])
-    {
-
-        case ',' :
-        {
-            t.type = TOKEN_COMMA;
-            tokenizer->at++;
-        } break;
-        case '=' :
-        {
-            t.type = TOKEN_EQUALS;
-            tokenizer->at++;
-        } break;
-        case '(' :
-        {
-            t.type = TOKEN_PAREN_OPEN;
-            tokenizer->at++;
-        } break;
-        case ')' :
-        {
-            t.type = TOKEN_PAREN_CLOSE; 
-            tokenizer->at++;
-        } break;
-        case '#' :
-        {
-            t.type = TOKEN_POUND;
-            tokenizer->at++;
-        } break;
-        case '[' :
-        {
-            t.type = TOKEN_BRACKET_OPEN; 
-            tokenizer->at++;
-        } break;
-        case ']' :
-        {
-            t.type = TOKEN_BRACKET_CLOSE;
-            tokenizer->at++;
-        } break;
-        case '{' :
-        {
-            t.type = TOKEN_BRACE_OPEN;
-            tokenizer->at++;
-        } break;
-        case '}' :
-        {
-            t.type = TOKEN_BRACE_CLOSE; 
-            tokenizer->at++;
-        } break;
-        case ':' :
-        {
-            t.type = TOKEN_COLON;
-            tokenizer->at++;
-        } break;
-        case ';':
-        {
-            t.type = TOKEN_SEMICOLON; 
-            tokenizer->at++;
-        } break;
-        case '*':
-        {
-            t.type = TOKEN_ASTERISK; 
-            tokenizer->at++;
-        } break;
-        case '"' :
-        {
-            tokenizer->at++;
-            while(tokenizer->at[0] && tokenizer->at[0] != '"')
-            {
-                if (tokenizer->at[0] == '\\' && tokenizer->at[1])
-                {
-                    tokenizer->at++;
-                }
-                tokenizer->at++;
-            }
-            if (tokenizer->at[0] == '"')
-            {
-                tokenizer->at++;
-            }
-            t.type = TOKEN_STRING;
-            t.length = tokenizer->at - t.text;
-        } break;
-        case '<' : 
-        {
-            if (tokenizer->at[1] == '<')
-            {
-                t.type = TOKEN_LSHIFT;
-                t.text = "<<";
-                t.length = 2;
-                tokenizer->at++;
-                tokenizer->at++;
-            }
-            else
-            {
-                t.type = TOKEN_LESSER_THAN;
-                t.text = "<";
-                t.length = 1;
-                tokenizer->at++;
-            }
-        } break;
-        case '>' :
-        {
-
-            if (tokenizer->at[1] == '>')
-            {
-                t.type = TOKEN_RSHIFT;
-                t.text = ">>";
-                t.length = 2;
-                tokenizer->at++;
-                tokenizer->at++;
-            }
-            else
-            {
-                t.type = TOKEN_GREATER_THAN;
-                t.text = ">";
-                t.length = 1;
-                tokenizer->at++;
-            }
-        } break;
-            
-        case 0 :
-        {
-            t.type = TOKEN_END;
-            t.text = '\0';
-            t.length = 0;
-        } break;
-        default :
-        {
-            if (isAlpha(tokenizer->at[0]))
-            {
-                while(isAlpha(tokenizer->at[0]) ||
-                      isNumeric(tokenizer->at[0]) ||
-                      tokenizer->at[0] == '_')
-                {
-                    tokenizer->at++;
-                }
-                t.type = TOKEN_IDENTIFIER;
-                t.length = tokenizer->at - t.text;
-            }
-            else if (isNumeric(tokenizer->at[0]))
-            {
-#if 1        
-                while(isNumeric(tokenizer->at[0])) //!isWhitespace(tokenizer->at[0]) && tokenizer->at[0] != ')' && tokenizer->at[0] != ',')
-                {
-                    tokenizer->at++;
-                }
-                t.type = TOKEN_NUMBER;
-                t.length = tokenizer->at - t.text;
-#else
-                parse_number_token(tokenizer);
-#endif
-            }
-            else
-            {
-                tokenizer->at++;
-                t.type = TOKEN_UNKNOWN;
-                t.length = 0;
-                t.text = nullptr;
-            }
-        } break;
-        
-    }
-    return t;
-}
-
-Token peek_tok(Tokenizer tokenizer)
-{
-    return getToken(&tokenizer);
-}
-    
-flocal b32 strEq(char* a, char* b)
-{
-    char* c = a;
-    char* d = b;
-    while (c[0] && d[0])
-    {
-        if(*c++ != *d++)
-        {
-            return false;
-        }
-        
-    }
-    return true;
-}
-
-flocal inline b32
-tokenEquals(const Token& a, const Token& b)
-{
-    return (a.type == b.type && a.length == b.length && strEq(a.text, b.text));
-}
-
-flocal inline
-Token token(TokenType type, u32 len, char* text)
-{
-    return {type, len, text};
-}
+#include "shader_binding_info.h"
+#include "material_info.h"
 
 flocal VkShaderStageFlagBits
 getShaderStage(char* str)
@@ -333,7 +23,7 @@ getShaderStage(char* str)
         ++path;
     }
     ++path;
-    if(strEq("vert", path))
+    if(streq("vert", path, 4))
     {
         return VK_SHADER_STAGE_VERTEX_BIT;
     }
@@ -343,11 +33,11 @@ getShaderStage(char* str)
     }
     
 }
-flocal void parseSingleShader(char* path, std::vector<ShaderBindingInfo>* infos)
+flocal void parseSingleShader(char* path, std::vector<shader_binding_info>* infos, std::vector<vertex_binding_info>* v_infos)
 {
 
-
-    char* buf = readEntireFileText(path);
+    u64 file_len;
+    char* buf = read_entire_file_text(path, &file_len);
     VkShaderStageFlagBits stage = getShaderStage(path);
 
     Tokenizer tokenizer = {};
@@ -374,25 +64,56 @@ flocal void parseSingleShader(char* path, std::vector<ShaderBindingInfo>* infos)
                     //eat first paren
                     Token paren = getToken(&tokenizer);
                     ASSERT(tokenEquals(token(TOKEN_PAREN_OPEN, 1, "("), paren), "Unexpected token!");
-                    ShaderBindingInfo info = {};
                     Token bindingType = getToken(&tokenizer);
-                    info.stageFlags = stage;
                         
                     if (tokenEquals(token(TOKEN_IDENTIFIER, 13, "push_constant"), bindingType))
                     {
-                        info.type = (VkDescriptorType)-1;
-                        info.isPushConstant = true;
+                        shader_binding_info info = {};
+                        info.stage_flags = (ShaderStage)stage;
+                        info.type = SHADER_DESCRIPTOR_TYPE_MAX_ENUM;
+                        info.is_push_constant = true;
                         infos->push_back(info);
                       
                     }
+                    else if (tokenEquals(token(TOKEN_IDENTIFIER, 8, "location"), bindingType))
+                    {
+                        vertex_binding_info info = {};
+                        info.stage_flags = (ShaderStage)stage;
+                        find_next_token(&tokenizer, token(TOKEN_ASSIGNMENT, 1, "="));
+                        Token bindingIndex = getToken(&tokenizer);
+                        info.binding_index = lenStringToInt(bindingIndex.text, bindingIndex.length);
+                        find_next_token(&tokenizer, token(TOKEN_PAREN_CLOSE, 1, ")"));
+                        if (peek_tok(tokenizer) == token(TOKEN_IDENTIFIER, 2, "in"))
+                        {
+                            getToken(&tokenizer);
+                            info.is_shader_input = 1;
+                        }
+                        else
+                        {
+                            Token t = getToken(&tokenizer);
+                            ASSERT(tokenEquals(t,token(TOKEN_IDENTIFIER, 3, "out")), "Unexpected token!");
+                            info.is_shader_input = 0;
+                        }
+                        Token type_name = getToken(&tokenizer);
+                        if (type_name == token(TOKEN_IDENTIFIER, 4, "vec2"))
+                        {
+                            info.vector_component_count = 2;
+                        }
+                        else if (type_name == token(TOKEN_IDENTIFIER, 4, "vec3"))
+                        {
+                            info.vector_component_count = 3;
+                        }
+                        else if (type_name == token(TOKEN_IDENTIFIER, 4, "vec4"))
+                        {
+                            info.vector_component_count = 4;   
+                        }
+                        v_infos->push_back(info);
+                    }
                     else if (tokenEquals(token(TOKEN_IDENTIFIER, 6, "std430"), bindingType))
                     {
-                        ASSERT(tokenEquals(token(TOKEN_COMMA, 1, ","), getToken(&tokenizer)),
-                               "Unexpected token!");
-                        ASSERT(tokenEquals(token(TOKEN_IDENTIFIER, 7, "binding"), getToken(&tokenizer)),
-                               "Unexpected token!");
-                        ASSERT(tokenEquals(token(TOKEN_EQUALS, 1, "="), getToken(&tokenizer)),
-                               "Unexpected token!");
+                        shader_binding_info info = {};
+                        info.stage_flags = (ShaderStage)stage;
+                        find_next_token(&tokenizer, token(TOKEN_ASSIGNMENT, 1, "="));
                         Token bindingIndex = getToken(&tokenizer);
                         info.binding = lenStringToInt(bindingIndex.text, bindingIndex.length);
                         
@@ -402,15 +123,16 @@ flocal void parseSingleShader(char* path, std::vector<ShaderBindingInfo>* infos)
                         Token isBuffer = getToken(&tokenizer);
                         if (tokenEquals(token(TOKEN_IDENTIFIER, 6, "buffer"), isBuffer))
                         {
-                            info.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                            info.type = SHADER_DESCRIPTOR_TYPE_STORAGE_BUFFER;
                         }
                         infos->push_back(info);
                         
                     }
                     else if (tokenEquals(token(TOKEN_IDENTIFIER, 7, "binding"), bindingType))
                     {
-                        ASSERT(tokenEquals(token(TOKEN_EQUALS, 1, "="), getToken(&tokenizer)),
-                               "Unexpected token!");
+                        shader_binding_info info = {};
+                        info.stage_flags = (ShaderStage)stage;
+                        find_next_token(&tokenizer, token(TOKEN_ASSIGNMENT, 1, "="));
                         Token bindingIndex = getToken(&tokenizer);
                         info.binding = lenStringToInt(bindingIndex.text, bindingIndex.length);
                         ASSERT(tokenEquals(token(TOKEN_PAREN_CLOSE, 1, ")"), getToken(&tokenizer)),
@@ -419,11 +141,11 @@ flocal void parseSingleShader(char* path, std::vector<ShaderBindingInfo>* infos)
                         Token isSampler = getToken(&tokenizer);
                         if (tokenEquals(token(TOKEN_IDENTIFIER, 9, "sampler2D"), isSampler) || tokenEquals(token(TOKEN_IDENTIFIER, 9, "sampler3D"), isSampler))
                         {
-                            info.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                            info.type = SHADER_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
                         }
                         else
                         {
-                            info.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                            info.type = SHADER_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
                         }
                         infos->push_back(info);
                     }
@@ -448,11 +170,11 @@ flocal inline u32 strLen(char* str)
 
 //NOTE(Bryn): VERY BAD!!! WILL LEAD TO MEMORY LEAKS IF RETURN VAL NOT CAPTURED
 flocal char*
-printShaderBindingInfo(const ShaderBindingInfo& bindingInfo, u32* ctr)
+print_shader_binding_info(const shader_binding_info& bindingInfo, u32* ctr)
 {
     char* buf = (char*)malloc(512);
     char* cursor = buf;
-    if (bindingInfo.isPushConstant)
+    if (bindingInfo.is_push_constant)
     {
         cursor += sprintf(cursor, "Push Constant\n");
     }
@@ -470,13 +192,13 @@ printShaderBindingInfo(const ShaderBindingInfo& bindingInfo, u32* ctr)
         {
             cursor += sprintf(cursor, "bindingInfo.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER\n");
         }
-        if (bindingInfo.stageFlags == VK_SHADER_STAGE_VERTEX_BIT)
+        if (bindingInfo.stage_flags == VK_SHADER_STAGE_VERTEX_BIT)
         {
-            cursor += sprintf(cursor, "bindingInfo.stageFlags == VK_SHADER_STAGE_VERTEX_BIT\n");
+            cursor += sprintf(cursor, "bindingInfo.stage_flags == VK_SHADER_STAGE_VERTEX_BIT\n");
         }
-        else if (bindingInfo.stageFlags == VK_SHADER_STAGE_FRAGMENT_BIT)
+        else if (bindingInfo.stage_flags == VK_SHADER_STAGE_FRAGMENT_BIT)
         {
-            cursor += sprintf(cursor, "bindingInfo.stageFlags == VK_SHADER_STAGE_FRAGMENT_BIT\n");
+            cursor += sprintf(cursor, "bindingInfo.stage_flags == VK_SHADER_STAGE_FRAGMENT_BIT\n");
         }
         cursor += sprintf(cursor, "bindingInfo.binding == %d\n", bindingInfo.binding);
         
@@ -488,15 +210,27 @@ printShaderBindingInfo(const ShaderBindingInfo& bindingInfo, u32* ctr)
     return buf;
 }
 
-char* printMaterialInfo(const MaterialInfo& materialInfo, u32* len)
+flocal char* print_vertex_binding_info(const vertex_binding_info& info)
+{
+    len_string l = l_string(512);
+    char* cursor = l.str;
+    sprintf(cursor, "Binding index: %d\nVector component count %d\nIs input: %d\nShader stage: %s\n", info.binding_index, info.vector_component_count, info.is_shader_input, info.stage_flags == SHADER_STAGE_VERTEX_BIT ? "SHADER_STAGE_VERTEX_BIT" : "SHADER_STAGE_FRAGMENT_BIT");
+    return l.str;
+}
+
+char* print_material_info(const material_info& materialInfo, u32* len)
 {
     char* buf = (char*)malloc(2048);
     char* cursor = buf;
-    cursor += sprintf(cursor, "%.*s\n", materialInfo.vertShaderPathLength, materialInfo.vertShaderPath);
-    cursor += sprintf(cursor, "%.*s\n\n", materialInfo.fragShaderPathLength, materialInfo.fragShaderPath);
-    for (int i = 0; i < materialInfo.numBindings; i++)
+    cursor += sprintf(cursor, "%.*s\n", materialInfo.vert_shader_path_length, materialInfo.vert_shader_path);
+    cursor += sprintf(cursor, "%.*s\n\n", materialInfo.frag_shader_path_length, materialInfo.frag_shader_path);
+    for (int i = 0; i < materialInfo.num_bindings; i++)
     {
-        cursor += sprintf(cursor, "Binding Info %d:\n%s\n", i, printShaderBindingInfo(materialInfo.bindings[i], nullptr));
+        cursor += sprintf(cursor, "Binding Info %d:\n%s\n", i, print_shader_binding_info(materialInfo.bindings[i], nullptr));
+    }
+    LOOP(i, materialInfo.num_vertex_bindings)
+    {
+        cursor += sprintf(cursor, "Vertex Info %d:\n%s\n", i, print_vertex_binding_info(materialInfo.vertex_bindings[i]));
     }
     if (len)
     {
@@ -537,22 +271,30 @@ int
 main(u32 argc, char** argv)
 {
     ASSERT(argc == 5, "TOO FEW ARGUMENTS SUPPLIED TO COMMAND LINE");
-    std::vector<ShaderBindingInfo> infos = {};
+    std::vector<shader_binding_info> infos = {};
+    std::vector<vertex_binding_info> v_infos;
     
-    parseSingleShader(argv[1], &infos);
-    parseSingleShader(argv[2], &infos);
     
-    MaterialInfo matInfo = {};
-    matInfo.numBindings = infos.size();
-    for(int i = 0; i < matInfo.numBindings; i++)
+    parseSingleShader(argv[1], &infos, &v_infos);
+    parseSingleShader(argv[2], &infos, &v_infos);
+    
+    material_info matInfo = {};
+    matInfo.num_bindings = infos.size();
+    matInfo.num_vertex_bindings = v_infos.size();
+    
+    LOOP(i, matInfo.num_bindings)
     {
         matInfo.bindings[i] = infos[i];
     }
+    LOOP(i, matInfo.num_vertex_bindings)
+    {
+        matInfo.vertex_bindings[i] = v_infos[i];
+    }
 
-    matInfo.vertShaderPathLength = getCompiledShaderName((char*)&matInfo.vertShaderPath, argv[4], VK_SHADER_STAGE_VERTEX_BIT);
+    matInfo.vert_shader_path_length = getCompiledShaderName((char*)&matInfo.vert_shader_path, argv[4], VK_SHADER_STAGE_VERTEX_BIT);
 
     
-    matInfo.fragShaderPathLength = getCompiledShaderName((char*)&matInfo.fragShaderPath, argv[4], VK_SHADER_STAGE_FRAGMENT_BIT);
+    matInfo.frag_shader_path_length = getCompiledShaderName((char*)&matInfo.frag_shader_path, argv[4], VK_SHADER_STAGE_FRAGMENT_BIT);
 
     char matPath[256];
     char* ctr = matPath;
@@ -576,14 +318,14 @@ main(u32 argc, char** argv)
     fclose(f);
     
     FILE* log = fopen(logPath, "w");
-    char* matLog = printMaterialInfo(matInfo, &len);
+    char* matLog = print_material_info(matInfo, &len);
     
     char vertCommandPath[256];
     sprintf(vertCommandPath,
-            "cmd /C W:/VulkanSDK/1.1.130.0/Bin/glslangValidator -V %s -o %s", argv[1], matInfo.vertShaderPath);
+            "cmd /C W:/VulkanSDK/1.1.130.0/Bin/glslangValidator -V %s -o %s", argv[1], matInfo.vert_shader_path);
     char fragCommandPath[256];
     sprintf(fragCommandPath,
-            "cmd /C W:/VulkanSDK/1.1.130.0/Bin/glslangValidator -V %s -o %s", argv[2], matInfo.fragShaderPath);
+            "cmd /C W:/VulkanSDK/1.1.130.0/Bin/glslangValidator -V %s -o %s", argv[2], matInfo.frag_shader_path);
     
     u32 vert_ret_val = system(vertCommandPath);
     u32 frag_ret_val = system(fragCommandPath);
