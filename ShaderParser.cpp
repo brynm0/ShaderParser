@@ -97,15 +97,19 @@ flocal void parseSingleShader(char* path, std::vector<shader_binding_info>* info
                         Token type_name = getToken(&tokenizer);
                         if (type_name == token(TOKEN_IDENTIFIER, 4, "vec2"))
                         {
-                            info.vector_component_count = 2;
+                            info.vertex_format = VK_FORMAT_R32G32_SFLOAT;
                         }
                         else if (type_name == token(TOKEN_IDENTIFIER, 4, "vec3"))
                         {
-                            info.vector_component_count = 3;
+                            info.vertex_format = VK_FORMAT_R32G32B32A32_SFLOAT;
                         }
                         else if (type_name == token(TOKEN_IDENTIFIER, 4, "vec4"))
                         {
-                            info.vector_component_count = 4;   
+                            info.vertex_format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                        }
+                        else if (type_name == token(TOKEN_IDENTIFIER, 5, "uvec4"))
+                        {
+                            info.vertex_format = VK_FORMAT_R32G32B32A32_UINT;
                         }
                         v_infos->push_back(info);
                     }
@@ -214,7 +218,30 @@ flocal char* print_vertex_binding_info(const vertex_binding_info& info)
 {
     len_string l = l_string(512);
     char* cursor = l.str;
-    sprintf(cursor, "Binding index: %d\nVector component count %d\nIs input: %d\nShader stage: %s\n", info.binding_index, info.vector_component_count, info.is_shader_input, info.stage_flags == SHADER_STAGE_VERTEX_BIT ? "SHADER_STAGE_VERTEX_BIT" : "SHADER_STAGE_FRAGMENT_BIT");
+    cursor += sprintf(cursor, "Binding index: %d\nIs input: %d\nShader stage: %s\n", info.binding_index, info.is_shader_input, info.stage_flags == SHADER_STAGE_VERTEX_BIT ? "SHADER_STAGE_VERTEX_BIT" : "SHADER_STAGE_FRAGMENT_BIT");
+    len_string format = l_string(64);
+    switch (info.vertex_format)
+    {
+        
+        case VK_FORMAT_R32G32_SFLOAT :
+        {
+            append_to_len_string(&format, "VK_FORMAT_R32G32_SFLOAT");
+        } break; 
+        case VK_FORMAT_R32G32B32A32_SFLOAT :
+        {
+            append_to_len_string(&format, "VK_FORMAT_R32G32B32A32_SFLOAT");
+        } break; 
+        case VK_FORMAT_R32G32B32A32_UINT :
+        {
+            append_to_len_string(&format, "VK_FORMAT_R32G32B32A32_UINT");
+        } break;
+        default :
+        {
+            ASSERT(1==0, "Unrecognized vertex format");
+        }
+    }
+    sprintf(cursor, "Vector format %s\n", format.str);
+    free_l_string(&format);
     return l.str;
 }
 
